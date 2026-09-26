@@ -107,8 +107,48 @@ async function regroup(windowId, mode) {
   return `${tabs.length} tabs → ${groupNames.length} groups` + (loose.length ? `, ${loose.length} ungrouped` : "");
 }
 
+// Move each tab group into its own new window. Ungrouped and pinned tabs stay put.
+async function splitGroups(windowId) {
+  const tabs = await chrome.tabs.query({ windowId });
+  const groupIds = [...new Set(tabs.map((t) => t.groupId).filter((g) => g !== chrome.tabGroups.TAB_GROUP_ID_NONE))];
+  if (!groupIds.length) return "No tab groups in this window";
+  // Keep one group here rather than emptying (and closing) the window.
+  const stay = tabs.some((t) => t.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) ? [] : groupIds.splice(0, 1);
+  for (const groupId of groupIds) {
+    const win = await chrome.windows.create({ focused: false });
+    const [blank] = await chrome.tabs.query({ windowId: win.id });
+    await chrome.tabGroups.move(groupId, { windowId: win.id, index: -1 });
+    await chrome.tabs.remove(blank.id);
+  }
+  return `Moved ${groupIds.length} groups to new windows` + (stay.length ? " (first group kept here)" : "");
+}
+
+// Move every tab from other normal windows into this one, keeping groups intact.
+async function mergeWindows(windowId) {
+  const target = await chrome.windows.get(windowId);
+  const others = (await chrome.windows.getAll({ windowTypes: ["normal"], populate: true }))
+    .filter((w) => w.id !== windowId && w.incognito === target.incognito);
+  let moved = 0;
+  for (const win of others) {
+    const movedGroups = new Set();
+    for (const tab of win.tabs) {
+      if (tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
+        await chrome.tabs.move(tab.id, { windowId, index: -1 });
+        if (tab.pinned) await chrome.tabs.update(tab.id, { pinned: true });
+      } else if (!movedGroups.has(tab.groupId)) {
+        movedGroups.add(tab.groupId);
+        await chrome.tabGroups.move(tab.groupId, { windowId, index: -1 });
+      }
+      moved++;
+    }
+  }
+  return others.length ? `Merged ${moved} tabs from ${others.length} windows` : "Only one window open";
+}
+
+const ACTIONS = { split: splitGroups, merge: mergeWindows };
+
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-  regroup(msg.windowId, msg.mode)
+  (ACTIONS[msg.mode] ? ACTIONS[msg.mode](msg.windowId) : regroup(msg.windowId, msg.mode))
     .then((summary) => reply({ summary }))
     .catch((e) => reply({ error: e.message }));
   return true;

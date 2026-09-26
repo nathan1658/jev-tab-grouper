@@ -1,12 +1,14 @@
 # Jev Tab Grouper
 
-A Chrome extension that organizes the tabs in the current window into tab groups:
+A Chrome extension that organizes your tabs into tab groups and windows:
 
 - **Group by domain** — one group per site (`mail.google.com` and `docs.google.com` both go to `google.com`; `bbc.co.uk` is handled as one domain). Groups are sorted alphabetically; sites with a single tab stay ungrouped after the groups.
 - **Group by category (Jev)** — asks [TypeSafe](https://typesafe.ai)'s **Jev** model to classify each tab by its title and URL into one of: Dev, AI, Cloud & Admin, Communication, Docs & Work, Learning, News & Reading, Social, Video & Music, Shopping, Finance, Travel & Maps, Other. Each category gets its own group and color.
 - **Ungroup all**
+- **Split groups into windows** — moves each tab group in the current window into its own new window, keeping its title and color. Ungrouped and pinned tabs stay put; if every tab is grouped, the first group stays so the window isn't emptied.
+- **Merge all windows here** — moves every tab from your other normal windows into the current one, keeping groups intact and pinned tabs pinned. Incognito and regular windows are never mixed.
 
-Pinned tabs are never touched. Both group modes ungroup existing groups first.
+The grouping buttons act on the current window only and never touch pinned tabs. Both group modes ungroup existing groups first.
 
 ## Setup
 
@@ -62,5 +64,9 @@ Your API key is stored in plain text in `config.js` inside the unpacked extensio
 | --- | --- |
 | `manifest.json` | MV3 manifest (`tabs`, `tabGroups`, host access to `api.typesafe.ai`) |
 | `background.js` | Grouping logic and Jev classification (service worker) |
-| `popup.html`, `popup.js` | Toolbar popup with the three buttons |
+| `popup.html`, `popup.js` | Toolbar popup with the buttons |
 | `setup.sh` | Writes `config.js` from `$TYPESAFE_API_KEY` |
+
+## License
+
+[MIT](LICENSE)
