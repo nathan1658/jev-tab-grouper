@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font: 13px system-ui, sans-serif; width: 220px; margin: 12px; }
+  button { display: block; width: 100%; padding: 8px; margin-bottom: 6px; cursor: pointer; }
+  #status { min-height: 1.2em; color: #555; }
+  #status.error { color: #c00; }
+</style>
+</head>
+<body>
+  <button data-mode="domain">Group by domain</button>
+  <button data-mode="category">Group by category (Jev)</button>
+  <button data-mode="ungroup">Ungroup all</button>
+  <div id="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
