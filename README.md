@@ -1,14 +1,16 @@
 # Jev Tab Grouper
 
-A Chrome extension that organizes your tabs into tab groups and windows:
+A Chrome extension that organizes all your open tabs, across every window, into tab groups and windows:
 
-- **Group by domain** — one group per site (`mail.google.com` and `docs.google.com` both go to `google.com`; `bbc.co.uk` is handled as one domain). Groups are sorted alphabetically; sites with a single tab stay ungrouped after the groups.
-- **Group by category (Jev)** — asks [TypeSafe](https://typesafe.ai)'s **Jev** model to classify each tab by its title and URL into one of: Dev, AI, Cloud & Admin, Communication, Docs & Work, Learning, News & Reading, Social, Video & Music, Shopping, Finance, Travel & Maps, Other. Each category gets its own group and color.
-- **Ungroup all**
-- **Split groups into windows** — moves each tab group in the current window into its own new window, keeping its title and color. Ungrouped and pinned tabs stay put; if every tab is grouped, the first group stays so the window isn't emptied.
-- **Merge all windows here** — moves every tab from your other normal windows into the current one, keeping groups intact and pinned tabs pinned. Incognito and regular windows are never mixed.
+- **Group by domain** — gathers every tab from all windows, puts them in one group per site, and gives each group its own window (`mail.google.com` and `docs.google.com` both go to `google.com`; `bbc.co.uk` is handled as one domain). Sites with a single tab stay ungrouped in the current window.
+- **Group by category (Jev)** — asks [TypeSafe](https://typesafe.ai)'s **Jev** model to classify every tab in all windows by its title and URL into one of: Dev, AI, Cloud & Admin, Communication, Docs & Work, Learning, News & Reading, Social, Video & Music, Shopping, Finance, Travel & Maps, Other. Each category gets its own group, color, and window.
+- **Ungroup all** — removes every tab group in every window; tabs stay where they are.
+- **Split groups into windows** — moves each existing tab group, in any window, into its own new window, keeping its title and color. Ungrouped and pinned tabs stay put.
+- **Merge all windows here** — moves every tab from your other normal windows into the current one, keeping groups intact and pinned tabs pinned.
 
-The grouping buttons act on the current window only and never touch pinned tabs. Both group modes ungroup existing groups first.
+The group buttons replace any existing groups and never group pinned tabs; pinned tabs are gathered into the current window. If a window has nothing but groups, one group stays in it so the window isn't closed. Incognito and regular windows are never mixed.
+
+In category mode every tab is classified before anything moves, so if the Jev API call fails your windows are left as they were.
 
 ## Setup
 
@@ -32,7 +34,7 @@ Domain grouping works without a key, but `config.js` must exist for the extensio
 
 ## How the category mode works
 
-Each unpinned tab is sent as its own small request to `POST https://api.typesafe.ai/v1/systemone` with a single Jev `choice` question:
+Each unpinned tab (from all windows) is sent as its own small request to `POST https://api.typesafe.ai/v1/systemone` with a single Jev `choice` question:
 
 ```json
 {
@@ -54,7 +56,7 @@ To change the categories or their colors, edit `CATEGORIES` at the top of [`back
 
 ## Privacy
 
-In category mode, the title and URL of each unpinned tab in the current window are sent to the TypeSafe API. Domain mode makes no network requests.
+In category mode, the title and URL of each unpinned tab in all windows are sent to the TypeSafe API. Domain mode makes no network requests.
 
 Your API key is stored in plain text in `config.js` inside the unpacked extension. Don't share a copy of the folder that includes it.
 

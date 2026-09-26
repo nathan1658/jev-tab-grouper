@@ -77,15 +77,40 @@ async function mapPool(items, fn) {
   return out;
 }
 
-async function regroup(windowId, mode) {
+// Normal windows with the same incognito state as windowId (including it), with tabs.
+async function sameProfileWindows(windowId) {
+  const target = await chrome.windows.get(windowId);
+  return (await chrome.windows.getAll({ windowTypes: ["normal"], populate: true }))
+    .filter((w) => w.incognito === target.incognito);
+}
+
+// Group every unpinned tab in all windows, then give each group its own window.
+// Tabs are classified before anything moves, so a Jev failure leaves windows untouched.
+async function groupAllWindows(windowId, mode) {
+  const tabs = (await sameProfileWindows(windowId)).flatMap((w) => w.tabs).filter((t) => !t.pinned);
+  const keys = mode === "category" ? await mapPool(tabs, classify) : tabs.map(domainOf);
+  const keyById = new Map(tabs.map((t, i) => [t.id, keys[i]]));
+  await mergeWindows(windowId);
+  const summary = await regroup(windowId, mode, keyById);
+  await splitGroups(windowId);
+  return summary + ", one window each";
+}
+
+async function ungroupAll() {
+  const grouped = (await chrome.tabs.query({})).filter((t) => t.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE).map((t) => t.id);
+  if (grouped.length) await chrome.tabs.ungroup(grouped);
+  return `Ungrouped ${grouped.length} tabs`;
+}
+
+async function regroup(windowId, mode, keyById) {
   const all = await chrome.tabs.query({ windowId });
   const pinnedCount = all.filter((t) => t.pinned).length;
   const tabs = all.filter((t) => !t.pinned);
   const grouped = tabs.filter((t) => t.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE).map((t) => t.id);
   if (grouped.length) await chrome.tabs.ungroup(grouped);
-  if (mode === "ungroup") return `Ungrouped ${grouped.length} tabs`;
 
-  const keys = mode === "category" ? await mapPool(tabs, classify) : tabs.map(domainOf);
+  // Tabs opened after classification started fall back to Other / their domain.
+  const keys = tabs.map((t) => keyById.get(t.id) ?? (mode === "category" ? "Other" : domainOf(t)));
   const buckets = new Map();
   tabs.forEach((t, i) => (buckets.get(keys[i]) || buckets.set(keys[i], []).get(keys[i])).push(t));
 
@@ -111,23 +136,27 @@ async function regroup(windowId, mode) {
 async function splitGroups(windowId) {
   const tabs = await chrome.tabs.query({ windowId });
   const groupIds = [...new Set(tabs.map((t) => t.groupId).filter((g) => g !== chrome.tabGroups.TAB_GROUP_ID_NONE))];
-  if (!groupIds.length) return "No tab groups in this window";
+  if (!groupIds.length) return 0;
   // Keep one group here rather than emptying (and closing) the window.
-  const stay = tabs.some((t) => t.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) ? [] : groupIds.splice(0, 1);
+  if (!tabs.some((t) => t.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE)) groupIds.shift();
   for (const groupId of groupIds) {
     const win = await chrome.windows.create({ focused: false });
     const [blank] = await chrome.tabs.query({ windowId: win.id });
     await chrome.tabGroups.move(groupId, { windowId: win.id, index: -1 });
     await chrome.tabs.remove(blank.id);
   }
-  return `Moved ${groupIds.length} groups to new windows` + (stay.length ? " (first group kept here)" : "");
+  return groupIds.length;
+}
+
+async function splitAllWindows(windowId) {
+  let moved = 0;
+  for (const win of await sameProfileWindows(windowId)) moved += await splitGroups(win.id);
+  return moved ? `Moved ${moved} groups to their own windows` : "No groups to split";
 }
 
 // Move every tab from other normal windows into this one, keeping groups intact.
 async function mergeWindows(windowId) {
-  const target = await chrome.windows.get(windowId);
-  const others = (await chrome.windows.getAll({ windowTypes: ["normal"], populate: true }))
-    .filter((w) => w.id !== windowId && w.incognito === target.incognito);
+  const others = (await sameProfileWindows(windowId)).filter((w) => w.id !== windowId);
   let moved = 0;
   for (const win of others) {
     const movedGroups = new Set();
@@ -145,10 +174,16 @@ async function mergeWindows(windowId) {
   return others.length ? `Merged ${moved} tabs from ${others.length} windows` : "Only one window open";
 }
 
-const ACTIONS = { split: splitGroups, merge: mergeWindows };
+const ACTIONS = {
+  domain: (id) => groupAllWindows(id, "domain"),
+  category: (id) => groupAllWindows(id, "category"),
+  ungroup: ungroupAll,
+  split: splitAllWindows,
+  merge: mergeWindows,
+};
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-  (ACTIONS[msg.mode] ? ACTIONS[msg.mode](msg.windowId) : regroup(msg.windowId, msg.mode))
+  ACTIONS[msg.mode](msg.windowId)
     .then((summary) => reply({ summary }))
     .catch((e) => reply({ error: e.message }));
   return true;
